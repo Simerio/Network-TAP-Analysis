@@ -1,0 +1,9 @@
+sudo docker exec -u 0 -it logstash "/bin/sh"
+
+
+frame.time_epoch
+ip.src
+ip.dst_host
+tcp.dstport
+udp.dstport
+  

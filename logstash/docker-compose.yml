@@ -1,0 +1,12 @@
+version: "2.1"
+
+services: 
+    logstash: 
+        build:
+            context: .
+            dockerfile: Dockerfile
+        volumes: 
+            - ${PWD}/pcap:/usr/share/logstash/pcap
+
+volumes:
+    pcap: 
