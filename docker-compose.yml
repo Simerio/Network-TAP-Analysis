@@ -7,6 +7,13 @@ services:
             dockerfile: Dockerfile
         volumes: 
             - ${PWD}/logstash/pcap:/usr/share/logstash/pcap
+        networks: 
+            - tap
 
 volumes:
     pcap: 
+
+networks:
+    tap:
+        name: tap
+        driver: bridge
