@@ -1,0 +1,29 @@
+version: '3.8'
+
+services: 
+    elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.12.1
+        container_name: elasticsearch
+        ports:
+            - "9200:9200"
+        environment:
+            - node.name=elasticsearch
+            - cluster.name=elasticsearch-docker-cluster
+            - discovery.seed_hosts=elasticsearch
+            - cluster.initial_master_nodes=elasticsearch
+            - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+        networks: 
+            - tap
+
+    kibana:
+        image: docker.elastic.co/kibana/kibana:7.12.1
+        container_name: kibana
+        ports:
+            - "5601:5601"
+        networks: 
+            - tap
+
+networks:
+    tap:
+        name: tap
+        driver: bridge
