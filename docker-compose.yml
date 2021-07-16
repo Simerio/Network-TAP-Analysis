@@ -22,7 +22,7 @@ services:
                 ipv4_address: 10.0.100.51
     kibana:
         build:
-            context: ./Kibana
+            context: ./kibana
             dockerfile: Dockerfile
         ports:
             - 5601:5601
