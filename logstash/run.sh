@@ -6,6 +6,17 @@ if [ $(/usr/bin/id -u) -ne 0 ]; then
     exit 
 fi
 
-set -x
+NEW_ARGS=()
 
-tshark -i wlo1 -lT ek -lT fields -E separator=, -E quote=d -e frame.time_epoch -e ip.src -e ip.dst_host -e tcp.dstport -Y "ip.dst != 192.168.1.3 && tcp " > ./pcap/pcap.csv
+filters=("frame.time_epoch" "ip.src" "ip.dst_host" "tcp.dstport")
+
+
+for elem in "${filters[@]}"
+do
+NEW_ARGS+="-e ${elem} "
+done
+
+echo ${NEW_ARGS}
+
+set -x
+tshark -i wlo1 -lT ek -lT fields -E separator=, -E quote=d ${NEW_ARGS} -Y "ip.dst != 192.168.1.3 && tcp " > ./pcap/pcap.csv

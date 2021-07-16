@@ -6,4 +6,6 @@ ip.src
 ip.dst_host
 tcp.dstport
 udp.dstport
+
+Leggo dst_port, classifico servizio. Leggo hostname se esiste, classifico se riesco tipo di sito.
   
