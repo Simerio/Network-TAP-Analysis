@@ -26,6 +26,8 @@ services:
             dockerfile: Dockerfile
         ports:
             - 5601:5601
+        depends_on: 
+            - elasticsearch
         networks: 
             tap:
                 ipv4_address: 10.0.100.52
