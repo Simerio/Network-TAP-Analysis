@@ -8,7 +8,7 @@ fi
 
 NEW_ARGS=()
 
-filters=("frame.time_epoch" "ip.src" "ip.dst_host" "tcp.dstport")
+filters=("frame.time_epoch" "ip.src" "ip.dst_host" "tcp.dstport" "tcp.stream" "tcp.flags.syn" "tcp.flags.fin")
 
 
 for elem in "${filters[@]}"
