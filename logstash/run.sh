@@ -7,8 +7,10 @@ if [ $(/usr/bin/id -u) -ne 0 ]; then
 fi
 
 NEW_ARGS=()
+interf=$(route | grep '^default' | grep -o '[^ ]*$')
+host=$(hostname --all-ip-addresses)
 
-filters=("frame.time_epoch" "ip.src" "ip.dst_host" "tcp.dstport" "tcp.stream" "tcp.flags.syn" "tcp.flags.fin")
+filters=("frame.time_epoch" "ip.src" "ip.dst_host" "tcp.dstport" "tcp.stream")
 
 
 for elem in "${filters[@]}"
@@ -16,7 +18,8 @@ do
 NEW_ARGS+="-e ${elem} "
 done
 
+echo ${interf}
 echo ${NEW_ARGS}
 
 set -x
-tshark -i wlo1 -lT ek -lT fields -E separator=, -E quote=d ${NEW_ARGS} -Y "ip.dst != 192.168.1.3 && tcp " > ./pcap/pcap.csv
+tshark -i ${interf} -lT ek -lT fields -E separator=, -E quote=d ${NEW_ARGS} -Y "ip.dst != ${host} && tcp " > ./pcap/pcap.csv
