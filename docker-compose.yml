@@ -16,7 +16,7 @@ services:
             - 9300:9300
         environment: 
             - discovery.type=single-node
-            - "ES_JAVA_OPTS=-Xms4g -Xmx4g"
+            - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
         networks: 
             tap:
                 ipv4_address: 10.0.100.51
