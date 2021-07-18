@@ -8,8 +8,6 @@ services:
         container_name: logstash
         volumes: 
             - ${PWD}/logstash/pcap:/usr/share/logstash/pcap
-        networks: 
-            - tap
     elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:7.12.1
         container_name: elasticsearch
@@ -19,9 +17,6 @@ services:
         environment: 
             - discovery.type=single-node
             - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
-        networks: 
-            tap:
-                ipv4_address: 10.0.100.51
     kibana:
         build:
             context: kibana
@@ -31,9 +26,6 @@ services:
             - 5601:5601
         depends_on: 
             - elasticsearch
-        networks: 
-            tap:
-                ipv4_address: 10.0.100.52
     zookeeper:
         build:
             context: kafka
@@ -42,9 +34,7 @@ services:
         command: [ "zookeeper-server-start.sh", "config/zookeeper.properties" ] 
         ports: 
             - 20181:2181
-        networks: 
-            tap:
-                ipv4_address: 10.0.100.22
+
     kafkaserver:
         build:
             context: kafka
@@ -55,20 +45,15 @@ services:
         command: [ "kafka-server-start.sh", "config/server.properties" ] 
         ports: 
             - 9092:9092
-        networks:
-            tap:
-                ipv4_address: 10.0.100.23    
     kafkaui:
         image: provectuslabs/kafka-ui:latest
         container_name: kafkaui
         environment:
             - KAFKA_CLUSTERS_0_NAME=my_cluster
-            - KAFKA_CLUSTERS_0_ZOOKEEPER=10.0.100.22:2181
-            - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=10.0.100.23:9092
+            - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
+            - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafkaserver:9092
         ports: 
             - 8080:8080
-        networks: 
-            - tap
         depends_on:
             - kafkaserver   
     spark:
@@ -78,15 +63,7 @@ services:
         container_name: spark
         depends_on: 
             - kafkaserver
-        networks: 
-            - tap
-
-
 
 volumes:
     pcap: 
 
-networks:
-    tap:
-        name: tap
-        driver: bridge
