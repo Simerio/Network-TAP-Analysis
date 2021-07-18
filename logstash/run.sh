@@ -8,7 +8,7 @@ fi
 
 NEW_ARGS=()
 interf=$(route | grep '^default' | grep -o '[^ ]*$')
-host=$(hostname --all-ip-addresses)
+host=$(hostname --all-ip-addresses | awk '{ print $1 }')
 
 filters=("frame.time_epoch" "ip.src" "ip.dst_host" "tcp.dstport")
 
