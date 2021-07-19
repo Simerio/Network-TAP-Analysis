@@ -1,4 +1,6 @@
 
+from pprint import pprint
+from pyspark.sql.functions import udf
 from pyspark import SparkContext
 from pyspark.conf import SparkConf
 from pyspark.sql.session import SparkSession
@@ -6,6 +8,7 @@ from elasticsearch import Elasticsearch
 from pyspark.sql.functions import from_json
 import pyspark.sql.types as tp
 import time
+from ipwhois import IPWhois
 
 kafkaServer = "kafkaserver:9092"
 elastic_host = "elasticsearch"
@@ -22,12 +25,27 @@ es_mapping = {
                 "properties": {
                     "ip": {"type": "ip"},
                     "location": {"type": "geo_point"}
-                    
                 }
             }
         }
     }
 }
+cache = {}
+
+
+@udf
+def getOwner(ip):
+    # pprint(ip)
+    if ip not in cache:
+        res = IPWhois(ip).lookup_whois()
+        owner = res["nets"][0]["description"]
+        if owner is None:
+            owner = res["nets"][0]["name"]
+        # print(owner)
+        cache[ip] = owner
+
+    return cache[ip]
+
 
 es = Elasticsearch(hosts=elastic_host)
 while not es.ping():
@@ -75,7 +93,8 @@ geoip_struct = tp.StructType([
 ])
 
 network_tap = tp.StructType([
-    tp.StructField(name='@timestamp', dataType=tp.StringType(),  nullable=True),
+    tp.StructField(name='@timestamp',
+                   dataType=tp.StringType(),  nullable=True),
     tp.StructField(name='hostname', dataType=tp.StringType(),  nullable=True),
     tp.StructField(name='ip_src', dataType=tp.StringType(),  nullable=True),
     tp.StructField(name='port', dataType=tp.IntegerType(),  nullable=True),
@@ -86,10 +105,10 @@ df_kafka = df_kafka.selectExpr("CAST(value AS STRING)") \
     .select(from_json("value", network_tap).alias("data"))\
     .select("data.*")
 
+df_kafka = df_kafka.withColumn("Owner", getOwner(df_kafka.geoip.ip))
 
 df_kafka = df_kafka.writeStream \
     .option("checkpointLocation", "/tmp/checkpoints") \
     .format("es") \
     .start(elastic_index) \
     .awaitTermination()
-
