@@ -47,7 +47,6 @@ sc = SparkContext.getOrCreate(conf=sparkConf)
 spark = SparkSession(sc)
 spark.sparkContext.setLogLevel("WARN")
 
-
 df_kafka = spark \
     .readStream \
     .format("kafka") \
@@ -89,7 +88,7 @@ df_kafka = df_kafka.selectExpr("CAST(value AS STRING)") \
 
 
 df_kafka = df_kafka.writeStream \
-    .option("checkpointLocation", "./checkpoints") \
+    .option("checkpointLocation", "/tmp/checkpoints") \
     .format("es") \
     .start(elastic_index) \
     .awaitTermination()
