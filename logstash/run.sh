@@ -22,4 +22,4 @@ echo ${interf}
 echo ${NEW_ARGS}
 
 set -x
-tshark -i ${interf} -lT ek -lT fields -E separator=, -E quote=d ${NEW_ARGS} -Y "ip.dst != ${host} && tcp " > ./pcap/pcap.csv
+tshark -i ${interf} -lT ek -lT fields -E separator=, -E quote=d ${NEW_ARGS} -Y "ip.dst != 192.168.0.0/16 && ip.dst != 172.16.0.0/12 && ip.dst != 10.0.0.0/8 && ip.dst != 224.0.0.0/4 && tcp" > ./pcap/pcap.csv
