@@ -35,6 +35,8 @@ cache = {}
 @udf
 def getOwner(ip):
     # pprint(ip)
+    if ip is None:
+        return "Unknown"
     if ip not in cache:
         res = IPWhois(ip).lookup_whois()
         owner = res["nets"][0]["description"]
