@@ -1,6 +1,6 @@
 FROM jupyter/pyspark-notebook:spark-3.1.1
 
-RUN pip3 install pyspark kafka-utils numpy elasticsearch ipwhois
+RUN pip3 install pyspark kafka-utils numpy elasticsearch ipwhois pandas sklearn
 
 WORKDIR /app
 ADD spark.py .
