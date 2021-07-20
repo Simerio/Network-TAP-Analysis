@@ -1,6 +1,6 @@
 
 from pprint import pprint
-from pyspark.sql.functions import udf
+from pyspark.sql.functions import udf, unix_timestamp, window
 from pyspark import SparkContext
 from pyspark.conf import SparkConf
 from pyspark.sql.session import SparkSession
@@ -8,7 +8,10 @@ from elasticsearch import Elasticsearch
 from pyspark.sql.functions import from_json
 import pyspark.sql.types as tp
 import time
+from sklearn.linear_model import LinearRegression
 from ipwhois import IPWhois
+import pandas as pd
+import numpy as np
 
 kafkaServer = "kafkaserver:9092"
 elastic_host = "elasticsearch"
@@ -19,7 +22,7 @@ elastic_index = "tap"
 es_mapping = {
     "mappings": {
         "properties": {
-            "@timestamp": {"type": "date"},
+            "@timestamp": {"type": "date", "format": "epoch_second"},
             "ip_src": {"type": "ip"},
             "geoip": {
                 "properties": {
@@ -32,17 +35,24 @@ es_mapping = {
 }
 cache = {}
 
+
+def get_linear_regression_model(df: pd.DataFrame):
+    x = df['timestamp'].to_numpy()
+    y = np.array([df.shape[0]])
+    lr = LinearRegression()
+    lr.fit(x, y)
+    return lr
+
+
 @udf
 def getOwner(ip):
     # pprint(ip)
-    if ip is None:
-        return "Unknown"
     if ip not in cache:
         res = IPWhois(ip).lookup_whois()
         owner = res["nets"][0]["description"]
         if owner is None:
             owner = res["nets"][0]["name"]
-            print(owner)
+        # print(owner)
         cache[ip] = owner
 
     return cache[ip]
@@ -102,14 +112,48 @@ network_tap = tp.StructType([
     tp.StructField(name='geoip', dataType=geoip_struct, nullable=True)
 ])
 
+
+def get_output_df():
+    return pd.DataFrame(columns=[
+        '@timestamp'
+    ])
+
+def predict_value(model, milliseconds):
+    rssi_range = lambda s: max(min(0, s), -120)
+    s = model.predict([[milliseconds]])[0]
+    return rssi_range(s)
+
+
+def predict(df: pd.DataFrame) -> pd.DataFrame:
+    def nrows(df): return df.shape[0]
+    newdf = get_output_df()
+    if (nrows(df) < 1):
+        return newdf
+    model = get_linear_regression_model(df)
+    lastPacketMillisec = df['timestamp'].values.max()
+    next_minutes = [ (lastPacketMillisec + (60000 * i)) for i in range(5) ]
+    next_bandwitch = [predict_value(model, m) for m in next_minutes]
+    for millis, rssi in zip(next_minutes, next_bandwitch):
+        newdf = newdf.append(make_series(df, millis, rssi), ignore_index=True)
+    return newdf
+
+
 df_kafka = df_kafka.selectExpr("CAST(value AS STRING)") \
     .select(from_json("value", network_tap).alias("data"))\
-    .select("data.*")
+    .select("data.*").\
+    withColumn("timestamp", unix_timestamp(
+        '@timestamp', format="yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
 
-#print(getOwner(df_kafka.geoip.ip))
 df_kafka = df_kafka.withColumn("Owner", getOwner(df_kafka.geoip.ip))
 
-df_kafka = df_kafka.writeStream \
+win = window(df_kafka.timestamp, "1 minutes")
+df_kafka = df_kafka\
+    .groupBy("timestamp", win)\
+    .applyInPandas(predict, network_tap)
+
+
+df_kafka = df_kafka\
+    .writeStream \
     .option("checkpointLocation", "/tmp/checkpoints") \
     .format("es") \
     .start(elastic_index) \
