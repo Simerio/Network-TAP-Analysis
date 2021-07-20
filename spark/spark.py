@@ -32,7 +32,6 @@ es_mapping = {
 }
 cache = {}
 
-
 @udf
 def getOwner(ip):
     # pprint(ip)
@@ -41,7 +40,7 @@ def getOwner(ip):
         owner = res["nets"][0]["description"]
         if owner is None:
             owner = res["nets"][0]["name"]
-        # print(owner)
+            print(owner)
         cache[ip] = owner
 
     return cache[ip]
@@ -105,6 +104,7 @@ df_kafka = df_kafka.selectExpr("CAST(value AS STRING)") \
     .select(from_json("value", network_tap).alias("data"))\
     .select("data.*")
 
+#print(getOwner(df_kafka.geoip.ip))
 df_kafka = df_kafka.withColumn("Owner", getOwner(df_kafka.geoip.ip))
 
 df_kafka = df_kafka.writeStream \
