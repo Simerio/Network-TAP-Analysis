@@ -10,6 +10,8 @@ import pyspark.sql.types as tp
 import time
 from ipwhois import IPWhois
 
+#SENZA ML   
+
 kafkaServer = "kafkaserver:9092"
 elastic_host = "elasticsearch"
 

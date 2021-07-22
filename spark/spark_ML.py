@@ -95,22 +95,10 @@ def get_linear_regression_model(df: pd.DataFrame):
 
 def get_output_df():
     return pd.DataFrame(columns = [
-        '@timestamp'
+        '@timestamp',
         'time',
         'predict'
     ])
-
-def make_series(timestamp,time, predict) -> pd.Series:
-    return pd.Series([
-        timestamp,
-        time,
-        int(predict),
-    ], index = [
-        'timestamp',
-        'time',
-        'predict'
-    ])
-
 
 def predict_value(model, milliseconds):
     s=model.predict([[milliseconds]])[0]
@@ -124,7 +112,7 @@ def predict(df: pd.DataFrame) -> pd.DataFrame:
     df_grouped=df.groupby(pd.Grouper(freq="20S"))\
                     .count().reset_index()
 
-    print(df_grouped.head(10))
+    print(df_grouped)
     newdf=get_output_df()
 
     model=get_linear_regression_model(df_grouped)
@@ -139,12 +127,13 @@ def predict(df: pd.DataFrame) -> pd.DataFrame:
     for m, r in zip(next_minutes, next_roba):
         newdf = newdf.append({"@timestamp": lastTimestamp, "time": m, "predict": max(r, 0)}, ignore_index = True)
 
-    print(newdf.head(6))
+    print(newdf)
     return newdf
 
 sparkConf= SparkConf().set("spark.app.name", "network-tap")\
     .set("es.nodes", elastic_host)\
-    .set("es.port", "9200")
+    .set("es.port", "9200") \
+    .set("spark.scheduler.mode", "FAIR")
 
 sc= SparkContext.getOrCreate(conf = sparkConf)
 spark= SparkSession(sc)
