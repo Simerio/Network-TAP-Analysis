@@ -11,9 +11,9 @@ services:
     elasticsearch:
         image: docker.elastic.co/elasticsearch/elasticsearch:7.12.1
         container_name: elasticsearch
-        ports:
-            - 9200:9200
-            - 9300:9300
+        expose:
+            - 9200
+            - 9300
         environment: 
             - discovery.type=single-node
             - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
@@ -32,8 +32,8 @@ services:
             dockerfile: Dockerfile
         container_name: zookeeper
         command: [ "zookeeper-server-start.sh", "config/zookeeper.properties" ] 
-        ports: 
-            - 20181:2181
+        expose: 
+            - 2181
 
     kafkaserver:
         build:
@@ -43,8 +43,8 @@ services:
         depends_on: 
             - zookeeper
         command: [ "kafka-server-start.sh", "config/server.properties" ] 
-        ports: 
-            - 9092:9092
+        expose: 
+            - 9092
     kafkaui:
         image: provectuslabs/kafka-ui:latest
         container_name: kafkaui
