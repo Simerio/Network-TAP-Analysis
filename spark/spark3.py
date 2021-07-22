@@ -27,7 +27,7 @@ elastic_index = "tap"
 es_mapping = {
     "mappings": {
         "properties": {
-            "@timestamp": {"type": "date", "format": "epoch_second"},
+            "@timestamp": {"type": "date"},
             "ip_src": {"type": "ip"},
             "geoip": {
                 "properties": {
@@ -42,7 +42,7 @@ es_mapping = {
 es_mapping2 = {
     "mappings": {
         "properties": {
-            "time": {"type": "date", "format": "epoch_second"}
+            "time": {"type": "date"}
         }
     }
 }
@@ -52,6 +52,8 @@ cache = {}
 @udf
 def getOwner(ip):
     # pprint(ip)
+    if ip is None:
+        return "Unknown"
     if ip not in cache:
         res = IPWhois(ip).lookup_whois()
         owner = res["nets"][0]["description"]
@@ -109,9 +111,9 @@ def predict_value(model, milliseconds):
 
 def predict(df: pd.DataFrame) -> pd.DataFrame:
     #print(df)
-    #df.set_index("@timestamp",inplace = True)
+    df.set_index("@timestamp",inplace = True)
     print(df)
-    df_grouped = df.groupby(pd.Grouper(key="@timestamp", freq="1min"))\
+    df_grouped = df.groupby(pd.Grouper(freq="1min"))\
                     .count().reset_index()
 
     print(df_grouped.head(10))
@@ -126,14 +128,14 @@ def predict(df: pd.DataFrame) -> pd.DataFrame:
     next_roba = [predict_value(model, m.value) for m in next_minutes]
     print(next_roba)
     for m,r in zip(next_minutes,next_roba):
-        newdf = newdf.append({"time":m,"predict":r},ignore_index=True)
+        newdf = newdf.append({"time":m,"predict":max(r,0)},ignore_index=True)
 
     print(newdf.head(6))
     return newdf
 
 sparkConf = SparkConf().set("spark.app.name", "network-tap") \
     .set("es.nodes", elastic_host) \
-    .set("es.port", "9200") \
+    .set("es.port", "9200")
 
 sc = SparkContext.getOrCreate(conf=sparkConf)
 spark = SparkSession(sc)
@@ -180,9 +182,10 @@ df_kafka = df_kafka.selectExpr("CAST(value AS STRING)") \
     .select("data.*")
 df_kafka = df_kafka.withColumn("Owner", getOwner(df_kafka.geoip.ip))
 
+
 counting = df_kafka\
     .select("@timestamp","port")\
-    .withWatermark("@timestamp", "30 seconds")\
+    .withWatermark("@timestamp", "5 minutes")\
     .groupBy(window("@timestamp", "5 minutes"))\
     .applyInPandas(predict, get_resulting_df_schema())
 
@@ -191,7 +194,8 @@ df_kafka\
     .writeStream\
     .option("checkpointLocation", "/tmp/checkpoints") \
     .format("es") \
-    .start(elastic_index) \
+    .start(elastic_index)
+
 
 counting\
     .writeStream \
