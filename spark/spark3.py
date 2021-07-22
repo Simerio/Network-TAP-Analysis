@@ -78,59 +78,58 @@ es.indices.create(
     ignore=400  # ignore 400 already exists code
 )
 
+
 def get_resulting_df_schema():
-    return  tp.StructType() \
+    return tp.StructType() \
         .add("time",            tp.StringType()) \
         .add("count",           tp.IntegerType()) \
         .add("predict",         tp.IntegerType())
 
 
 def get_linear_regression_model(df: pd.DataFrame):
-    x = df['time'].to_numpy().reshape(-1, 1)
-    y = df['count'].to_numpy()
+    x = df['@timestamp'].to_numpy().reshape(-1, 1)
+    y = df['port'].to_numpy()
     lr = LinearRegression()
+    print(y)
     lr.fit(x, y)
-    return lr 
+    return lr
+
 
 def get_output_df():
     return pd.DataFrame(columns=[
-        'time', 
-        'count', 
+        'time',
         'predict'
     ])
 
-def make_series(df, timestamp, predicted_rssi) -> pd.Series:
-    return pd.Series([
-        str(timestamp),
-        df.iloc[0]['count'],
-        int(predicted_rssi)
-    ], index=[
-        'time', 
-        'count', 
-        'predict'
-    ])
+
 
 def predict_value(model, milliseconds):
     s = model.predict([[milliseconds]])[0]
     return s
-    
+
 
 def predict(df: pd.DataFrame) -> pd.DataFrame:
-    nrows = lambda df: df.shape[0]    
-    newdf = get_output_df()
-    n = nrows(df)
-    print(n)
-    if (n < 1):
-        return newdf
-    model = get_linear_regression_model(df.tail(5))
+    #print(df)
+    #df.set_index("@timestamp",inplace = True)
+    print(df)
+    df_grouped = df.groupby(pd.Grouper(key="@timestamp", freq="1min"))\
+                    .count().reset_index()
 
-    lastSignalMillisec = df['time'].values.max()
-    next_minutes = [ (lastSignalMillisec + (30 * i)) for i in range(5) ]
-    next_rssi = [predict_value(model, m) for m in next_minutes]
-    print(next_rssi)
-    for millis, rssi in zip(next_minutes, next_rssi):
-        newdf = newdf.append(make_series(df, millis, rssi), ignore_index=True)
-    
+    print(df_grouped.head(10))
+    newdf = get_output_df()
+
+    model = get_linear_regression_model(df_grouped)
+
+    lastTimestamp = df_grouped["@timestamp"].values.max()
+    print(lastTimestamp)
+    print(type(lastTimestamp))
+    next_minutes = [(lastTimestamp + pd.Timedelta(f"{i} min")) for i in range(1,6)]
+    next_roba = [predict_value(model, m.value) for m in next_minutes]
+    print(next_roba)
+    for m,r in zip(next_minutes,next_roba):
+        newdf = newdf.append({"time":m,"predict":r},ignore_index=True)
+
+    print(newdf.head(6))
     return newdf
 
 sparkConf = SparkConf().set("spark.app.name", "network-tap") \
@@ -182,18 +181,11 @@ df_kafka = df_kafka.selectExpr("CAST(value AS STRING)") \
     .select("data.*")
 df_kafka = df_kafka.withColumn("Owner", getOwner(df_kafka.geoip.ip))
 
-def funny_fun(ddd):
-    for d in ddd:
-        yield predict(d)
-
 counting = df_kafka\
-    .select("@timestamp")\
-    .withWatermark("@timestamp","30 seconds")\
-    .groupBy(window("@timestamp", "30 seconds"))\
-    .count()\
-    .select("count",unix_timestamp(col("window.start")).alias("time"))\
-    .mapInPandas(funny_fun,get_resulting_df_schema())
-#    .applyInPandas(predict,get_resulting_df_schema())
+    .select("@timestamp","port")\
+    .withWatermark("@timestamp", "30 seconds")\
+    .groupBy(window("@timestamp", "5 minutes"))\
+    .applyInPandas(predict, get_resulting_df_schema())
 
 
 df_kafka\
@@ -208,4 +200,3 @@ counting\
     .format("es") \
     .start(elastic_index+"-netstat") \
     .awaitTermination()
-
