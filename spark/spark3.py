@@ -81,8 +81,7 @@ es.indices.create(
 
 def get_resulting_df_schema():
     return tp.StructType() \
-        .add("time",            tp.StringType()) \
-        .add("count",           tp.IntegerType()) \
+        .add("time",            tp.TimestampType()) \
         .add("predict",         tp.IntegerType())
 
 
