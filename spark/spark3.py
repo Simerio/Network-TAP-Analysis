@@ -12,12 +12,6 @@ from sklearn.linear_model import LinearRegression
 from ipwhois import IPWhois
 import pandas as pd
 
-
-pd.set_option('display.max_rows', 500)
-pd.set_option('display.max_columns', 500)
-pd.set_option('display.width', 1000)
-
-
 kafkaServer = "kafkaserver:9092"
 elastic_host = "elasticsearch"
 
@@ -42,10 +36,12 @@ es_mapping = {
 es_mapping2 = {
     "mappings": {
         "properties": {
+            "@timestamp": {"type": "date"},
             "time": {"type": "date"}
         }
     }
 }
+
 cache = {}
 
 
@@ -83,70 +79,83 @@ es.indices.create(
 
 def get_resulting_df_schema():
     return tp.StructType() \
-        .add("time",            tp.TimestampType()) \
+        .add("@timestamp",     tp.TimestampType())\
+        .add("time",            tp.TimestampType())\
         .add("predict",         tp.IntegerType())
 
 
 def get_linear_regression_model(df: pd.DataFrame):
-    x = df['@timestamp'].to_numpy().reshape(-1, 1)
-    y = df['port'].to_numpy()
-    lr = LinearRegression()
+    x=df['@timestamp'].to_numpy().reshape(-1, 1)
+    y=df['port'].to_numpy()
+    lr=LinearRegression()
     print(y)
     lr.fit(x, y)
     return lr
 
 
 def get_output_df():
-    return pd.DataFrame(columns=[
+    return pd.DataFrame(columns = [
+        '@timestamp'
+        'time',
+        'predict'
+    ])
+
+def make_series(timestamp,time, predict) -> pd.Series:
+    return pd.Series([
+        timestamp,
+        time,
+        int(predict),
+    ], index = [
+        'timestamp',
         'time',
         'predict'
     ])
 
 
-
 def predict_value(model, milliseconds):
-    s = model.predict([[milliseconds]])[0]
+    s=model.predict([[milliseconds]])[0]
     return s
 
 
 def predict(df: pd.DataFrame) -> pd.DataFrame:
-    #print(df)
-    df.set_index("@timestamp",inplace = True)
+    # print(df)
+    df.set_index("@timestamp", inplace = True)
     print(df)
-    df_grouped = df.groupby(pd.Grouper(freq="1min"))\
+    df_grouped=df.groupby(pd.Grouper(freq="20S"))\
                     .count().reset_index()
 
     print(df_grouped.head(10))
-    newdf = get_output_df()
+    newdf=get_output_df()
 
-    model = get_linear_regression_model(df_grouped)
+    model=get_linear_regression_model(df_grouped)
 
-    lastTimestamp = df_grouped["@timestamp"].values.max()
+    lastTimestamp=df_grouped["@timestamp"].values.max()
     print(lastTimestamp)
     print(type(lastTimestamp))
-    next_minutes = [(lastTimestamp + pd.Timedelta(f"{i} min")) for i in range(1,6)]
-    next_roba = [predict_value(model, m.value) for m in next_minutes]
+    next_minutes=[
+        (lastTimestamp + pd.Timedelta(f"{(i+1)*10} S")) for i in range(12)]
+    next_roba= [predict_value(model, m.value) for m in next_minutes]
     print(next_roba)
-    for m,r in zip(next_minutes,next_roba):
-        newdf = newdf.append({"time":m,"predict":max(r,0)},ignore_index=True)
+    for m, r in zip(next_minutes, next_roba):
+        newdf = newdf.append({"@timestamp": lastTimestamp, "time": m, "predict": max(r, 0)}, ignore_index = True)
 
     print(newdf.head(6))
     return newdf
 
-sparkConf = SparkConf().set("spark.app.name", "network-tap") \
-    .set("es.nodes", elastic_host) \
+sparkConf= SparkConf().set("spark.app.name", "network-tap")\
+    .set("es.nodes", elastic_host)\
     .set("es.port", "9200")
 
-sc = SparkContext.getOrCreate(conf=sparkConf)
-spark = SparkSession(sc)
+sc= SparkContext.getOrCreate(conf = sparkConf)
+spark= SparkSession(sc)
 spark.sparkContext.setLogLevel("ERROR")
 
-df_kafka = spark \
-    .readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", kafkaServer) \
-    .option("subscribe", elastic_topic) \
-    .option("startingOffset", "earliest") \
+df_kafka= spark\
+    .readStream\
+    .format("kafka")\
+    .option("kafka.bootstrap.servers", kafkaServer)\
+    .option("subscribe", elastic_topic)\
+    .option("startingOffset", "earliest")\
     .load()
 
 location_struct = tp.StructType([
@@ -177,29 +186,30 @@ network_tap = tp.StructType([
     tp.StructField(name='geoip', dataType=geoip_struct, nullable=True)
 ])
 
-df_kafka = df_kafka.selectExpr("CAST(value AS STRING)") \
+df_kafka= df_kafka.selectExpr("CAST(value AS STRING)")\
     .select(from_json("value", network_tap).alias("data"))\
     .select("data.*")
-df_kafka = df_kafka.withColumn("Owner", getOwner(df_kafka.geoip.ip))
+df_kafka= df_kafka.withColumn("Owner", getOwner(df_kafka.geoip.ip))
 
 
-counting = df_kafka\
-    .select("@timestamp","port")\
-    .withWatermark("@timestamp", "5 minutes")\
-    .groupBy(window("@timestamp", "5 minutes"))\
+counting= df_kafka\
+    .select("@timestamp", "port")\
+    .groupBy(window("@timestamp", "2 minutes"))\
     .applyInPandas(predict, get_resulting_df_schema())
 
 
 df_kafka\
     .writeStream\
-    .option("checkpointLocation", "/tmp/checkpoints") \
-    .format("es") \
+    .option("checkpointLocation", "/tmp/checkpoints")\
+    .format("es")\
     .start(elastic_index)
 
 
 counting\
-    .writeStream \
-    .option("checkpointLocation", "/tmp/checkpoints2") \
-    .format("es") \
-    .start(elastic_index+"-netstat") \
-    .awaitTermination()
+    .writeStream\
+    .option("checkpointLocation", "/tmp/checkpoints2")\
+    .format("es")\
+    .trigger(processingTime = '2 minutes')\
+    .start(elastic_index+"-netstat")
+
+spark.streams.awaitAnyTermination()
